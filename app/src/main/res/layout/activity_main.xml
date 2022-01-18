@@ -9,10 +9,30 @@
     tools:context=".MainActivity">
 
 
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content">
+
+        <ImageButton
+            android:id="@+id/strage"
+            android:layout_width="50sp"
+            android:layout_height="50sp"
+            android:layout_gravity="top|right"
+            android:src="@drawable/storage" />
+
+        <ImageButton
+            android:id="@+id/bell"
+            android:layout_width="50sp"
+            android:layout_height="50sp"
+            android:layout_gravity="top|left"
+            android:src="@drawable/bell" />
+
+
+    </LinearLayout>
+
     <ImageButton
         android:id="@+id/recordOn"
-        android:layout_width="274dp"
-        android:layout_height="236dp"
+        android:layout_width="60sp"
+        android:layout_height="60sp"
         android:src="@drawable/mike" />
-
 </LinearLayout>
