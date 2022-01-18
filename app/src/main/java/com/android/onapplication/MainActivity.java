@@ -1,229 +1,117 @@
 package com.android.onapplication;
 
 import androidx.annotation.NonNull;
-import androidx.annotation.RequiresApi;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
-import androidx.recyclerview.widget.LinearLayoutManager;
-import androidx.recyclerview.widget.RecyclerView;
+import androidx.core.content.ContextCompat;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.media.MediaPlayer;
 import android.media.MediaRecorder;
-import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.util.Log;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.ImageButton;
-import android.widget.ImageView;
-import android.widget.TextView;
-
-import java.io.File;
-import java.io.IOException;
-import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
+import android.widget.Toast;
 
 public abstract class MainActivity extends AppCompatActivity {
+    private static final int REQUEST_RECORD_AUDIO_PERMISSION = 200;
+    private MediaRecorder recorder;
+    private String fileName;
 
-    /**xml 변수*/
-    ImageButton audioRecordImageBtn;
-    TextView audioRecordText;
+    private MediaPlayer player;
+    private int position = 0;
 
-    /**오디오 파일 관련 변수*/
-    // 오디오 권한
-    private String recordPermission = Manifest.permission.RECORD_AUDIO;
-    private int PERMISSION_CODE = 21;
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
 
-    // 오디오 파일 녹음 관련 변수
-    private MediaRecorder mediaRecorder;
-    private String audioFileName; // 오디오 녹음 생성 파일 이름
-    private boolean isRecording = false;    // 현재 녹음 상태를 확인하기 위함.
-    private Uri audioUri = null; // 오디오 파일 uri
+        ImageButton recommend, mypage;
 
-    // 오디오 파일 재생 관련 변수
-    private MediaPlayer mediaPlayer = null;
-    private Boolean isPlaying = false;
-    ImageView playIcon;
 
-    /** 리사이클러뷰 */
-    private AudioAdapter audioAdapter;
-    private ArrayList<Uri> audioList;
+        recommend = (ImageButton) findViewById(R.id.recommend);
+        recommend.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent1 = new Intent(getApplicationContext(), Fragment1.class);
+                startActivity(intent1);
+            }
+        });
+
+        mypage = (ImageButton) findViewById(R.id.mypage);
+        mypage.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                Intent intent2 = new Intent(getApplicationContext(), Fragment2.class);
+                startActivity(intent2);
+            }
+        });
+
+        switch (requestCode) {
+            case REQUEST_RECORD_AUDIO_PERMISSION:
+                if (grantResults.length > 0) {
+                    if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                        Toast.makeText(this, "Audio 권한을 사용자가 승인함.", Toast.LENGTH_LONG).show();
+                    } else if (grantResults[0] == PackageManager.PERMISSION_DENIED) {
+                        Toast.makeText(this, "Audio 권한을 사용자가 거부함.", Toast.LENGTH_LONG).show();
+                    }
+                } else {
+                    Toast.makeText(this, "Audio 권한을 부여받지 못함.", Toast.LENGTH_LONG).show();
+                }
+                break;
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        init();
-    }
+        // 위험 권한 부여하기
+        int permissionCheck = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO);
 
-    // xml 변수 초기화
-    // 리사이클러뷰 생성 및 클릭 이벤트
-    private void init() {
-        audioRecordImageBtn = findViewById(R.id.recordOn);
-
-        audioRecordImageBtn.setOnClickListener(new Button.OnClickListener() {
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public void onClick(View view) {
-                if(isRecording) {
-                    // 현재 녹음 중 O
-                    // 녹음 상태에 따른 변수 아이콘 & 텍스트 변경
-                    isRecording = false; // 녹음 상태 값
-                    audioRecordImageBtn.setImageDrawable(getResources().getDrawable(R.drawable.ic_baseline_mic_24, null)); // 녹음 상태 아이콘 변경
-                    audioRecordText.setText("녹음 시작"); // 녹음 상태 텍스트 변경
-                    stopRecording();
-                    // 녹화 이미지 버튼 변경 및 리코딩 상태 변수값 변경
-                } else {
-                    // 현재 녹음 중 X
-                    /*절차
-                     *       1. Audio 권한 체크
-                     *       2. 처음으로 녹음 실행한건지 여부 확인
-                     * */
-                    if(checkAudioPermission()) {
-                        // 녹음 상태에 따른 변수 아이콘 & 텍스트 변경
-                        isRecording = true; // 녹음 상태 값
-                        audioRecordImageBtn.setImageDrawable(getResources().getDrawable(R.drawable.ic_baseline_mic_24, null)); // 녹음 상태 아이콘 변경
-                        audioRecordText.setText("녹음 중"); // 녹음 상태 텍스트 변경
-                        startRecording();
-                    }
-                }
-            }
-        });
-
-
-        // 커스텀 이벤트 리스너 4. 액티비티에서 커스텀 리스너 객체 생성 및 전달
-        audioAdapter.setOnItemClickListener(new AudioAdapter.OnIconClickListener() {
-            @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-            @Override
-            public void onItemClick(View view, int position) {
-
-                String uriName = String.valueOf(audioList.get(position));
-
-                /*음성 녹화 파일에 대한 접근 변수 생성;
-                     (ImageView)를 붙여줘서 View 객체를 형변환 시켜줌.
-                     전역변수로 한 이유는
-                    * */
-
-                File file = new File(uriName);
-
-                if(isPlaying){
-                    // 음성 녹화 파일이 여러개를 클릭했을 때 재생중인 파일의 Icon을 비활성화(비 재생중)으로 바꾸기 위함.
-                    if(playIcon == (ImageView)view){
-                        // 같은 파일을 클릭했을 경우
-                        stopAudio();
-                    } else {
-                        // 다른 음성 파일을 클릭했을 경우
-                        // 기존의 재생중인 파일 중지
-                        stopAudio();
-
-                        // 새로 파일 재생하기
-                        playIcon = (ImageView)view;
-                        playAudio(file);
-                    }
-                } else {
-                    playIcon = (ImageView)view;
-                    playAudio(file);
-                }
-            }
-        });
-    }
-
-    // 오디오 파일 권한 체크
-    private boolean checkAudioPermission() {
-        if (ActivityCompat.checkSelfPermission(getApplicationContext(), recordPermission) == PackageManager.PERMISSION_GRANTED) {
-            return true;
+        if (permissionCheck == PackageManager.PERMISSION_GRANTED) {
+            Toast.makeText(this, "Audio 권한 있음.", Toast.LENGTH_LONG).show();
         } else {
-            ActivityCompat.requestPermissions(this, new String[]{recordPermission}, PERMISSION_CODE);
-            return false;
-        }
-    }
-
-    // 녹음 시작
-    private void startRecording() {
-        //파일의 외부 경로 확인
-        String recordPath = getExternalFilesDir("/").getAbsolutePath();
-        // 파일 이름 변수를 현재 날짜가 들어가도록 초기화. 그 이유는 중복된 이름으로 기존에 있던 파일이 덮어 쓰여지는 것을 방지하고자 함.
-        String timeStamp = new SimpleDateFormat("yyyyMMdd_HHmmss").format(new Date());
-        audioFileName = recordPath + "/" +"RecordExample_" + timeStamp + "_"+"audio.mp4";
-
-        //Media Recorder 생성 및 설정
-        mediaRecorder = new MediaRecorder();
-        mediaRecorder.setAudioSource(MediaRecorder.AudioSource.MIC);
-        mediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP);
-        mediaRecorder.setOutputFile(audioFileName);
-        mediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB);
-
-        try {
-            mediaRecorder.prepare();
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-        //녹음 시작
-        mediaRecorder.start();
-    }
-
-    // 녹음 종료
-    private void stopRecording() {
-        // 녹음 종료 종료
-        mediaRecorder.stop();
-        mediaRecorder.release();
-        mediaRecorder = null;
-
-        // 파일 경로(String) 값을 Uri로 변환해서 저장
-        //      - Why? : 리사이클러뷰에 들어가는 ArrayList가 Uri를 가지기 때문
-        //      - File Path를 알면 File을  인스턴스를 만들어 사용할 수 있기 때문
-        audioUri = Uri.parse(audioFileName);
-
-
-        // 데이터 ArrayList에 담기
-        audioList.add(audioUri);
-
-
-        // 데이터 갱신
-        audioAdapter.notifyDataSetChanged();
-
-    }
-
-    // 녹음 파일 재생
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    private void playAudio(File file) {
-        mediaPlayer = new MediaPlayer();
-
-        try {
-            mediaPlayer.setDataSource(file.getAbsolutePath());
-            mediaPlayer.prepare();
-            mediaPlayer.start();
-        } catch (IOException e) {
-            e.printStackTrace();
+            Toast.makeText(this, "Audio 권한 없음.", Toast.LENGTH_LONG).show();
+            if (ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.RECORD_AUDIO)) {
+                Toast.makeText(this, "Audio 권한 설명 필요함.", Toast.LENGTH_LONG).show();
+            } else {
+                ActivityCompat.requestPermissions(this, new String[]{Manifest.permission.RECORD_AUDIO}, REQUEST_RECORD_AUDIO_PERMISSION);
+            }
         }
 
-        playIcon.setImageDrawable(getResources().getDrawable(R.drawable.ic_baseline_mic_24, null));
-        isPlaying = true;
-
-        mediaPlayer.setOnCompletionListener(new MediaPlayer.OnCompletionListener() {
+        // Record to the external cache directory for visibility
+        fileName = getExternalCacheDir().getAbsolutePath();
+        fileName += "/audiorecordtest.3gp";
+        Log.e("MainActivity", "저장할 파일명 : " + fileName);
+        ImageButton recordOn = findViewById(R.id.recordOn);
+        recordOn.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onCompletion(MediaPlayer mp) {
-                stopAudio();
+            public void onClick(View v) {
+                recordAudio();
             }
         });
-
     }
 
-    // 녹음 파일 중지
-    @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
-    private void stopAudio() {
-        playIcon.setImageDrawable(getResources().getDrawable(R.drawable.ic_baseline_mic_24, null));
-        isPlaying = false;
-        mediaPlayer.stop();
+    protected abstract void recordAudio();
+
+    public void onRecord(View view) {
+        recorder = new MediaRecorder();
+
+        recorder.setAudioSource(MediaRecorder.AudioSource.MIC);
+        recorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+        recorder.setOutputFile(fileName);
+        recorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+        try {
+            recorder.prepare();
+
+            Toast.makeText(this, "녹음 시작됨.", Toast.LENGTH_LONG).show();
+        } catch (Exception e) {
+            Log.e("SampleAudioRecorder", "Exception : ", e);
+        }
+        recorder.start();
     }
-
-
-    @NonNull
-    public abstract RecyclerView.ViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType);
 }
